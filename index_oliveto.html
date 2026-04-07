@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Agente Oliveto Elio PRO</title>
+    <style>
+        :root { --verde: #1b4332; --bg: #f8f9fa; --allerta: #d32f2f; }
+        body { font-family: sans-serif; background: var(--bg); margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        .header { background: var(--verde); color: white; padding: 15px; font-weight: bold; font-size: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
+        
+        #display-area { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; overflow-y: auto; }
+        #testo-agente { font-size: 22px; color: var(--verde); font-weight: bold; line-height: 1.4; margin-bottom: 20px; }
+        
+        #anteprima { width: 80%; max-height: 250px; border-radius: 15px; display: none; border: 4px solid white; box-shadow: 0 5px 15px rgba(0,0,0,0.1); margin-bottom: 10px; }
+        
+        .loader { display: none; width: 50px; height: 50px; border: 5px solid #f3f3f3; border-top: 5px solid var(--verde); border-radius: 50%; animation: spin 1s linear infinite; margin: 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .footer { background: white; padding: 20px; border-radius: 30px 30px 0 0; box-shadow: 0 -5px 20px rgba(0,0,0,0.1); }
+        .btn-foto { width: 100%; background: #2e7d32; color: white; border: none; border-radius: 20px; padding: 25px; font-size: 24px; font-weight: bold; cursor: pointer; box-shadow: 0 6px 0 #1b3d17; }
+        .btn-foto:active { transform: translateY(4px); box-shadow: 0 2px 0 #1b3d17; }
+    </style>
+</head>
+<body>
+
+    <div class="header">AGENTE OLIVETO: ELIO</div>
+
+    <div id="display-area">
+        <img id="anteprima" src="">
+        <div id="loader" class="loader"></div>
+        <div id="testo-agente">"Ciao Elio. Sono pronto. Premi il tasto verde e inquadra la pianta o le olive."</div>
+    </div>
+
+    <div class="footer">
+        <input type="file" id="input-file" accept="image/*" capture="camera" style="display:none">
+        <button class="btn-foto" id="btn-attiva">📸 SCATTA E ANALIZZA</button>
+    </div>
+
+<script>
+    // --- CONFIGURAZIONE ---
+    const API_KEY = "AIzaSyBrZwwEvuFxn-QYoCoct4B7WLSVJ35K8YY"; 
+    const URL_API = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+
+    const btnAttiva = document.getElementById('btn-attiva');
+    const inputFile = document.getElementById('input-file');
+    const testoAgente = document.getElementById('testo-agente');
+    const anteprima = document.getElementById('anteprima');
+    const loader = document.getElementById('loader');
+
+    // 1. Attivazione Fotocamera
+    btnAttiva.addEventListener('click', () => inputFile.click());
+
+    // 2. Gestione Foto
+    inputFile.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Reset UI
+        anteprima.src = URL.createObjectURL(file);
+        anteprima.style.display = "block";
+        loader.style.display = "block";
+        testoAgente.innerText = "Sto analizzando l'oliveto...";
+        parla("Un momento Elio, sto guardando la pianta.");
+
+        try {
+            const base64Image = await resizeAndBase64(file);
+            await chiediAGemini(base64Image);
+        } catch (err) {
+            gestisciErrore("Problema tecnico nel processare l'immagine.");
+        }
+    });
+
+    // 3. Chiamata a Gemini
+    async function chiediAGemini(base64Data) {
+        const prompt = "Sei un agronomo esperto. Elio ti mostra una foto del suo oliveto (6 ettari). Identifica se ci sono segni di mosca, occhio di pavone o stress. Rispondi in italiano, sii tecnico ma chiaro. Inizia con 'Elio,'.";
+        
+        const payload = {
+            contents: [{
+                parts: [
+                    { text: prompt },
+                    { inlineData: { mimeType: "image/jpeg", data: base64Data } }
+                ]
+            }]
+        };
+
+        try {
+            const response = await fetch(URL_API, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+            
+            if (data.candidates && data.candidates[0]) {
+                const risposta = data.candidates[0].content.parts[0].text;
+                testoAgente.innerText = risposta;
+                parla(risposta);
+            } else {
+                throw new Error("Risposta vuota");
+            }
+        } catch (err) {
+            gestisciErrore("Non riesco a collegarmi al satellite. Controlla internet.");
+        } finally {
+            loader.style.display = "none";
+        }
+    }
+
+    // 4. Compressione Immagine (Fondamentale per non far crashare l'invio)
+    function resizeAndBase64(file) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 800; // Ridimensioniamo per velocità
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.7).split(',')[1]);
+                };
+            };
+        });
+    }
+
+    function parla(testo) {
+        window.speechSynthesis.cancel();
+        const msg = new SpeechSynthesisUtterance(testo);
+        msg.lang = 'it-IT';
+        window.speechSynthesis.speak(msg);
+    }
+
+    function gestisciErrore(txt) {
+        testoAgente.innerText = "Elio, scusa: " + txt;
+        parla(testoAgente.innerText);
+        loader.style.display = "none";
+    }
+</script>
+</body>
+</html>
