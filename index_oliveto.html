@@ -19,6 +19,16 @@
         #azione-banner.attenzione { background: #ef6c00; }
 
         #contesto-info { width: 100%; max-width: 520px; font-size: clamp(11px, 2.8vw, 12.5px); color: #777; text-align: center; padding: 0 6px; display: none; line-height: 1.4; }
+
+        #resoconto-iniziale { width: 100%; max-width: 520px; background: white; border-radius: 14px; padding: 14px 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: none; box-sizing: border-box; }
+        .resoconto-titolo { font-size: clamp(14px, 3.7vw, 16px); font-weight: bold; color: var(--verde); margin-bottom: 8px; }
+        .resoconto-saluto { font-size: clamp(14px, 3.7vw, 16px); color: #333; line-height: 1.4; margin-bottom: 10px; }
+        .resoconto-rischi { display: flex; flex-direction: column; gap: 6px; }
+        .resoconto-rischio { display: flex; align-items: center; padding: 6px 0; }
+        .resoconto-rischio .diagnosi-pallino { width: 18px; height: 18px; margin-right: 10px; }
+        .resoconto-rischio .rischio-nome { font-weight: 600; color: #222; margin-right: 6px; font-size: clamp(13px, 3.5vw, 15px); }
+        .resoconto-rischio .rischio-motivo { color: #666; font-size: clamp(12px, 3.2vw, 13.5px); }
+        .resoconto-consiglio { font-size: clamp(13px, 3.4vw, 14.5px); color: #444; margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee; line-height: 1.4; }
         #lista-diagnosi { width: 100%; max-width: 520px; display: none; }
         .diagnosi-item { display: flex; align-items: center; padding: 10px 12px; background: white; border-radius: 11px; margin-bottom: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
         .diagnosi-pallino { width: 22px; height: 22px; border-radius: 50%; margin-right: 12px; flex-shrink: 0; box-shadow: inset 0 -3px 6px rgba(0,0,0,0.2); }
@@ -73,6 +83,12 @@
         <img id="anteprima" src="">
         <div id="loader" class="loader"></div>
         <div id="testo-agente">"Ciao Elio. Sono pronto. Premi il tasto verde e inquadra la pianta o le olive."</div>
+        <div id="resoconto-iniziale">
+            <div class="resoconto-titolo">📍 Rischi di oggi nella tua zona</div>
+            <div class="resoconto-saluto"></div>
+            <div class="resoconto-rischi"></div>
+            <div class="resoconto-consiglio"></div>
+        </div>
         <div id="azione-banner"></div>
         <div id="lista-diagnosi"></div>
         <div id="contesto-info"></div>
@@ -106,6 +122,10 @@
     const azioneBanner = document.getElementById('azione-banner');
     const listaDiagnosi = document.getElementById('lista-diagnosi');
     const contestoInfo = document.getElementById('contesto-info');
+    const resocontoBox = document.getElementById('resoconto-iniziale');
+    const resocontoSaluto = resocontoBox.querySelector('.resoconto-saluto');
+    const resocontoRischi = resocontoBox.querySelector('.resoconto-rischi');
+    const resocontoConsiglio = resocontoBox.querySelector('.resoconto-consiglio');
 
     const AVVERSITA = [
         "Mosca dell'olivo",
@@ -133,6 +153,7 @@
         API_KEY = val;
         inputKey.value = "";
         modalKey.classList.add('nascosto');
+        avviaResocontoIniziale();
     }
     btnConfermaKey.addEventListener('click', confermaChiave);
     inputKey.addEventListener('keydown', (e) => { if (e.key === 'Enter') confermaChiave(); });
@@ -161,6 +182,7 @@
         azioneBanner.style.display = "none";
         contestoInfo.style.display = "none";
         contestoInfo.innerText = "";
+        resocontoBox.style.display = "none";
         testoAgente.style.display = "block";
         testoAgente.innerText = "Sto leggendo posizione e meteo...";
         parla("Un momento Elio, sto guardando la pianta e il meteo.");
@@ -259,6 +281,139 @@
         return righe.join(" ");
     }
 
+    // 2ter. Helper unico per chiamare Gemini e ottenere JSON parsato
+    async function chiamaGeminiJSON(payload) {
+        const response = await fetch(`${URL_BASE}?key=${API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            const msg = (data && data.error && data.error.message) ? data.error.message : `HTTP ${response.status}`;
+            throw new Error(msg);
+        }
+        if (!data.candidates || !data.candidates[0]) throw new Error("Risposta vuota dall'API");
+        const grezza = data.candidates[0].content.parts[0].text || "";
+        let jsonStr = grezza.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+        const inizio = jsonStr.indexOf('{');
+        const fine = jsonStr.lastIndexOf('}');
+        if (inizio >= 0 && fine > inizio) jsonStr = jsonStr.slice(inizio, fine + 1);
+        try { return JSON.parse(jsonStr); }
+        catch (e) {
+            console.warn("JSON non valido:", grezza);
+            throw new Error("la risposta non era leggibile");
+        }
+    }
+
+    // 2quater. Resoconto iniziale dei rischi attesi nella zona (senza foto)
+    async function avviaResocontoIniziale() {
+        testoAgente.style.display = "block";
+        testoAgente.innerText = "Sto leggendo posizione e meteo...";
+        const ctx = await costruisciContesto();
+        if (!ctx) {
+            testoAgente.innerText = "Posizione non disponibile. Premi il tasto verde per analizzare una foto.";
+            parla("Posizione non disponibile, ma puoi comunque scattare una foto.");
+            return;
+        }
+        const ctxTesto = formattaContesto(ctx);
+        mostraContesto(ctxTesto);
+        testoAgente.innerText = "Sto valutando i rischi della tua zona...";
+
+        const prompt = `Parli con Elio, contadino anziano, all'apertura dell'app del suo oliveto.
+Da' un brevissimo resoconto dei rischi PROBABILI oggi, basandoti SOLO su questo contesto (niente foto):
+${ctxTesto}
+
+Considera queste avversita': ${AVVERSITA.join(', ')}.
+
+Restituisci SOLO JSON:
+{
+  "saluto": "...",
+  "rischi": [ { "nome": "...", "livello": "rosso|arancione", "motivo": "..." }, ... ],
+  "consiglio": "..."
+}
+
+Regole:
+- "saluto": 1 frase max 25 parole, in italiano semplice, riferimento a stagione/meteo.
+- "rischi": SOLO i 2-3 piu' probabili oggi viste zona, altitudine, stagione, meteo. Niente livelli verdi.
+- "motivo": max 8 parole, perche' e' a rischio adesso.
+- "consiglio": 1 frase max 15 parole con cosa controllare oggi.
+- Niente latino, niente nomi scientifici, niente markdown, niente parentesi.`;
+
+        const payload = {
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+                temperature: 0.3,
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: "object",
+                    properties: {
+                        saluto: { type: "string" },
+                        rischi: {
+                            type: "array",
+                            items: {
+                                type: "object",
+                                properties: {
+                                    nome: { type: "string" },
+                                    livello: { type: "string", enum: ["rosso", "arancione"] },
+                                    motivo: { type: "string" }
+                                },
+                                required: ["nome", "livello", "motivo"]
+                            }
+                        },
+                        consiglio: { type: "string" }
+                    },
+                    required: ["saluto", "rischi", "consiglio"]
+                }
+            }
+        };
+
+        try {
+            const parsed = await chiamaGeminiJSON(payload);
+            mostraResoconto(parsed);
+        } catch (err) {
+            testoAgente.innerText = "Resoconto non disponibile. Premi il tasto verde per analizzare una foto.";
+            parla("Resoconto non disponibile adesso, ma puoi comunque scattare una foto.");
+            console.warn("Errore resoconto iniziale:", err);
+        }
+    }
+
+    function mostraResoconto(parsed) {
+        const saluto = pulisciTesto(parsed.saluto || "");
+        const consiglio = pulisciTesto(parsed.consiglio || "");
+        const rischi = Array.isArray(parsed.rischi) ? parsed.rischi : [];
+
+        resocontoSaluto.innerText = saluto;
+        resocontoRischi.innerHTML = "";
+        rischi.forEach(r => {
+            const row = document.createElement('div');
+            row.className = 'resoconto-rischio';
+            const pallino = document.createElement('div');
+            pallino.className = 'diagnosi-pallino ' + (r.livello || 'arancione');
+            const nome = document.createElement('span');
+            nome.className = 'rischio-nome';
+            nome.innerText = pulisciTesto(r.nome || "");
+            const motivo = document.createElement('span');
+            motivo.className = 'rischio-motivo';
+            motivo.innerText = pulisciTesto(r.motivo || "");
+            row.appendChild(pallino);
+            row.appendChild(nome);
+            row.appendChild(motivo);
+            resocontoRischi.appendChild(row);
+        });
+        resocontoConsiglio.innerText = consiglio ? "💡 " + consiglio : "";
+        resocontoConsiglio.style.display = consiglio ? "block" : "none";
+
+        resocontoBox.style.display = "block";
+        testoAgente.style.display = "none";
+
+        const nomiRischi = rischi.map(r => r.nome).join(", ");
+        const vocale = rischi.length
+            ? `${saluto} Occhio a: ${nomiRischi}. ${consiglio}`
+            : `${saluto} ${consiglio}`;
+        parla(pulisciTesto(vocale));
+    }
+
     // 3. Chiamata a Gemini
     async function chiediAGemini(base64Data, contestoTesto) {
         const blocoContesto = contestoTesto
@@ -315,37 +470,8 @@ Regole:
         };
 
         try {
-            const response = await fetch(`${URL_BASE}?key=${API_KEY}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                const msg = (data && data.error && data.error.message) ? data.error.message : `HTTP ${response.status}`;
-                throw new Error(msg);
-            }
-
-            if (data.candidates && data.candidates[0]) {
-                const grezza = data.candidates[0].content.parts[0].text || "";
-                // Tollera code fences ```json ... ``` e testo prima/dopo il JSON
-                let jsonStr = grezza.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
-                const inizio = jsonStr.indexOf('{');
-                const fine = jsonStr.lastIndexOf('}');
-                if (inizio >= 0 && fine > inizio) jsonStr = jsonStr.slice(inizio, fine + 1);
-
-                let parsed;
-                try { parsed = JSON.parse(jsonStr); }
-                catch (e) {
-                    console.warn("JSON non valido:", grezza);
-                    throw new Error("la risposta non era leggibile, riprova con un'altra foto");
-                }
-                mostraDiagnosi(parsed);
-            } else {
-                throw new Error("Risposta vuota dall'API");
-            }
+            const parsed = await chiamaGeminiJSON(payload);
+            mostraDiagnosi(parsed);
         } catch (err) {
             gestisciErrore(err.message || "errore sconosciuto");
         } finally {
@@ -474,6 +600,7 @@ Regole:
         listaDiagnosi.style.display = "none";
         azioneBanner.style.display = "none";
         contestoInfo.style.display = "none";
+        resocontoBox.style.display = "none";
         testoAgente.style.display = "block";
         testoAgente.innerText = "Elio, scusa: " + txt;
         parla(testoAgente.innerText);
