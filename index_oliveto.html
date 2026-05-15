@@ -20,9 +20,28 @@
         .footer { background: white; padding: 20px; border-radius: 30px 30px 0 0; box-shadow: 0 -5px 20px rgba(0,0,0,0.1); }
         .btn-foto { width: 100%; background: #2e7d32; color: white; border: none; border-radius: 20px; padding: 25px; font-size: 24px; font-weight: bold; cursor: pointer; box-shadow: 0 6px 0 #1b3d17; }
         .btn-foto:active { transform: translateY(4px); box-shadow: 0 2px 0 #1b3d17; }
+
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; justify-content: center; align-items: center; z-index: 100; padding: 20px; }
+        .modal-overlay.nascosto { display: none; }
+        .modal-box { background: white; padding: 25px; border-radius: 20px; width: 100%; max-width: 360px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .modal-box h2 { color: var(--verde); margin: 0 0 10px; }
+        .modal-box p { font-size: 14px; color: #555; margin: 0 0 15px; }
+        .modal-box input { width: 100%; padding: 12px; font-size: 16px; border: 2px solid #ccc; border-radius: 10px; box-sizing: border-box; margin-bottom: 12px; }
+        .modal-box button { width: 100%; background: var(--verde); color: white; border: none; border-radius: 12px; padding: 15px; font-size: 18px; font-weight: bold; cursor: pointer; }
+        #errore-key { color: var(--allerta); font-size: 14px; margin-top: 10px; min-height: 18px; }
     </style>
 </head>
 <body>
+
+    <div id="modal-key" class="modal-overlay">
+        <div class="modal-box">
+            <h2>🔑 Chiave API</h2>
+            <p>Incolla la chiave Gemini per questa sessione.<br>Non verrà salvata: alla prossima apertura va reinserita.</p>
+            <input type="password" id="input-key" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="AIza...">
+            <button id="btn-conferma-key">Avvia agente</button>
+            <div id="errore-key"></div>
+        </div>
+    </div>
 
     <div class="header">AGENTE OLIVETO: ELIO</div>
 
@@ -39,17 +58,40 @@
 
 <script>
     // --- CONFIGURAZIONE ---
-    const API_KEY = "AIzaSyBrZwwEvuFxn-QYoCoct4B7WLSVJ35K8YY"; 
-    const URL_API = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+    // La chiave vive solo in memoria per la durata della sessione.
+    // Niente localStorage / cookie: ricaricando la pagina va reinserita.
+    let API_KEY = null;
+    const URL_BASE = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
 
     const btnAttiva = document.getElementById('btn-attiva');
     const inputFile = document.getElementById('input-file');
     const testoAgente = document.getElementById('testo-agente');
     const anteprima = document.getElementById('anteprima');
     const loader = document.getElementById('loader');
+    const modalKey = document.getElementById('modal-key');
+    const inputKey = document.getElementById('input-key');
+    const btnConfermaKey = document.getElementById('btn-conferma-key');
+    const erroreKey = document.getElementById('errore-key');
+
+    // 0. Sblocco con chiave API
+    function confermaChiave() {
+        const val = inputKey.value.trim();
+        if (!val) {
+            erroreKey.innerText = "Inserisci una chiave valida.";
+            return;
+        }
+        API_KEY = val;
+        inputKey.value = "";
+        modalKey.classList.add('nascosto');
+    }
+    btnConfermaKey.addEventListener('click', confermaChiave);
+    inputKey.addEventListener('keydown', (e) => { if (e.key === 'Enter') confermaChiave(); });
 
     // 1. Attivazione Fotocamera
-    btnAttiva.addEventListener('click', () => inputFile.click());
+    btnAttiva.addEventListener('click', () => {
+        if (!API_KEY) { modalKey.classList.remove('nascosto'); return; }
+        inputFile.click();
+    });
 
     // 2. Gestione Foto
     inputFile.addEventListener('change', async (e) => {
@@ -85,7 +127,7 @@
         };
 
         try {
-            const response = await fetch(URL_API, {
+            const response = await fetch(`${URL_BASE}?key=${API_KEY}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
