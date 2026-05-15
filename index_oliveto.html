@@ -5,64 +5,201 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Agente Oliveto Elio PRO</title>
     <style>
-        :root { --verde: #1b4332; --bg: #f8f9fa; --allerta: #d32f2f; }
-        body { font-family: sans-serif; background: var(--bg); margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-        .header { background: var(--verde); color: white; padding: 15px; font-weight: bold; font-size: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
-        
-        #display-area { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 12px 14px 16px; overflow-y: auto; -webkit-overflow-scrolling: touch; gap: 10px; }
-        #testo-agente { font-size: clamp(18px, 4.5vw, 22px); color: var(--verde); font-weight: bold; line-height: 1.35; text-align: center; padding: 0 6px; }
+        :root {
+            --verde: #1b4332;
+            --verde-medio: #2d6a4f;
+            --verde-accento: #52b788;
+            --verde-pulsante: #2e7d32;
+            --verde-pulsante-scuro: #1b5e20;
+            --verde-pulsante-bordo: #133e10;
+            --bg-inizio: #f4f6f4;
+            --bg-fine: #ebefea;
+            --bg-card: #ffffff;
+            --testo: #1f2937;
+            --testo-soft: #6b7280;
+            --bordo: #e5e7eb;
+            --allerta: #d32f2f;
+            --allerta-scuro: #b71c1c;
+            --attenzione: #ef6c00;
+            --attenzione-scuro: #e65100;
+            --successo: #43a047;
+            --ombra: 0 2px 12px rgba(27, 67, 50, 0.07);
+            --ombra-card: 0 1px 4px rgba(27, 67, 50, 0.06);
+            --ombra-grande: 0 10px 30px rgba(0, 0, 0, 0.25);
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+            background: linear-gradient(180deg, var(--bg-inizio) 0%, var(--bg-fine) 100%);
+            color: var(--testo);
+            margin: 0; padding: 0;
+            display: flex; flex-direction: column;
+            height: 100vh; overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
 
-        #anteprima { width: clamp(160px, 45vw, 260px); max-height: 130px; border-radius: 14px; display: none; border: 3px solid white; box-shadow: 0 4px 12px rgba(0,0,0,0.12); object-fit: cover; }
+        .header {
+            background: linear-gradient(135deg, var(--verde) 0%, var(--verde-medio) 100%);
+            color: white; padding: 13px 18px;
+            display: flex; align-items: center; gap: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+            position: relative; z-index: 5;
+        }
+        .header-icona { font-size: 26px; line-height: 1; }
+        .header-testo { display: flex; flex-direction: column; line-height: 1.1; }
+        .header-titolo { font-weight: 700; font-size: clamp(15px, 4.3vw, 18px); letter-spacing: 0.4px; }
+        .header-sottotitolo { font-size: 10.5px; opacity: 0.78; font-weight: 400; margin-top: 3px; letter-spacing: 0.6px; text-transform: uppercase; }
 
-        #azione-banner { width: 100%; max-width: 520px; padding: 12px 16px; background: var(--verde); color: white; border-radius: 14px; font-size: clamp(16px, 4.2vw, 19px); font-weight: bold; text-align: center; display: none; line-height: 1.3; box-sizing: border-box; }
-        #azione-banner.allerta { background: var(--allerta); }
-        #azione-banner.attenzione { background: #ef6c00; }
+        #display-area {
+            flex: 1; display: flex; flex-direction: column; align-items: center;
+            padding: 16px 14px 14px; overflow-y: auto;
+            -webkit-overflow-scrolling: touch; gap: 12px;
+        }
+        #testo-agente {
+            font-size: clamp(17px, 4.3vw, 21px);
+            color: var(--verde); font-weight: 600;
+            line-height: 1.4; text-align: center;
+            padding: 6px 12px; max-width: 520px;
+        }
 
-        #contesto-info { width: 100%; max-width: 520px; font-size: clamp(11px, 2.8vw, 12.5px); color: #777; text-align: center; padding: 0 6px; display: none; line-height: 1.4; }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes scaleIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        #resoconto-iniziale { width: 100%; max-width: 520px; background: white; border-radius: 14px; padding: 14px 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: none; box-sizing: border-box; }
-        .resoconto-titolo { font-size: clamp(14px, 3.7vw, 16px); font-weight: bold; color: var(--verde); margin-bottom: 8px; }
-        .resoconto-saluto { font-size: clamp(14px, 3.7vw, 16px); color: #333; line-height: 1.4; margin-bottom: 10px; }
-        .resoconto-rischi { display: flex; flex-direction: column; gap: 6px; }
-        .resoconto-rischio { display: flex; align-items: center; padding: 6px 0; }
-        .resoconto-rischio .diagnosi-pallino { width: 18px; height: 18px; margin-right: 10px; }
-        .resoconto-rischio .rischio-nome { font-weight: 600; color: #222; margin-right: 6px; font-size: clamp(13px, 3.5vw, 15px); }
-        .resoconto-rischio .rischio-motivo { color: #666; font-size: clamp(12px, 3.2vw, 13.5px); }
-        .resoconto-consiglio { font-size: clamp(13px, 3.4vw, 14.5px); color: #444; margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee; line-height: 1.4; }
+        #anteprima {
+            width: clamp(160px, 45vw, 240px); max-height: 130px;
+            border-radius: 16px; display: none;
+            border: 3px solid white; box-shadow: var(--ombra);
+            object-fit: cover; animation: fadeInUp 0.3s ease;
+        }
+
+        .loader {
+            display: none; width: 46px; height: 46px;
+            border: 4px solid #e3eae3; border-top: 4px solid var(--verde-accento);
+            border-radius: 50%; animation: spin 0.85s linear infinite; margin: 12px;
+        }
+
+        #azione-banner {
+            width: 100%; max-width: 520px;
+            padding: 14px 18px; background: linear-gradient(135deg, var(--verde) 0%, var(--verde-medio) 100%);
+            color: white; border-radius: 16px;
+            font-size: clamp(16px, 4.2vw, 19px); font-weight: 700;
+            text-align: center; display: none; line-height: 1.35;
+            box-shadow: var(--ombra); animation: scaleIn 0.3s ease;
+        }
+        #azione-banner.allerta { background: linear-gradient(135deg, var(--allerta) 0%, var(--allerta-scuro) 100%); }
+        #azione-banner.attenzione { background: linear-gradient(135deg, var(--attenzione) 0%, var(--attenzione-scuro) 100%); }
+
+        #resoconto-iniziale {
+            width: 100%; max-width: 520px;
+            background: var(--bg-card); border-radius: 16px;
+            padding: 16px 18px; box-shadow: var(--ombra);
+            display: none; border-left: 4px solid var(--verde-accento);
+            animation: scaleIn 0.3s ease;
+        }
+        .resoconto-titolo { font-size: clamp(14px, 3.7vw, 16px); font-weight: 700; color: var(--verde); margin-bottom: 10px; letter-spacing: 0.3px; }
+        .resoconto-saluto { font-size: clamp(14px, 3.7vw, 16px); color: var(--testo); line-height: 1.5; margin-bottom: 10px; }
+        .resoconto-rischi { display: flex; flex-direction: column; }
+        .resoconto-rischio { display: flex; align-items: center; padding: 8px 0; border-top: 1px solid var(--bordo); }
+        .resoconto-rischio:first-child { border-top: none; padding-top: 4px; }
+        .resoconto-rischio .diagnosi-pallino { width: 16px; height: 16px; margin-right: 10px; }
+        .resoconto-rischio .rischio-nome { font-weight: 600; color: var(--testo); margin-right: 6px; font-size: clamp(13px, 3.5vw, 15px); }
+        .resoconto-rischio .rischio-motivo { color: var(--testo-soft); font-size: clamp(12px, 3.2vw, 13.5px); }
+        .resoconto-consiglio {
+            font-size: clamp(13px, 3.4vw, 14.5px); color: var(--testo);
+            margin-top: 12px; padding: 10px 12px;
+            background: #f1f7f3; border-radius: 10px; line-height: 1.4;
+        }
+
         #lista-diagnosi { width: 100%; max-width: 520px; display: none; }
-        .diagnosi-item { display: flex; align-items: center; padding: 10px 12px; background: white; border-radius: 11px; margin-bottom: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
-        .diagnosi-pallino { width: 22px; height: 22px; border-radius: 50%; margin-right: 12px; flex-shrink: 0; box-shadow: inset 0 -3px 6px rgba(0,0,0,0.2); }
-        .diagnosi-pallino.rosso { background: #d32f2f; }
-        .diagnosi-pallino.arancione { background: #f57c00; }
-        .diagnosi-pallino.verde { background: #43a047; }
+        .diagnosi-item {
+            display: flex; align-items: center;
+            padding: 11px 14px; background: var(--bg-card);
+            border-radius: 12px; margin-bottom: 6px;
+            box-shadow: var(--ombra-card);
+            animation: fadeInUp 0.25s ease;
+        }
+        .diagnosi-pallino { width: 22px; height: 22px; border-radius: 50%; margin-right: 12px; flex-shrink: 0; box-shadow: inset 0 -2px 4px rgba(0,0,0,0.25); }
+        .diagnosi-pallino.rosso { background: radial-gradient(circle at 30% 30%, #ef5350, #c62828); }
+        .diagnosi-pallino.arancione { background: radial-gradient(circle at 30% 30%, #ffa726, #ef6c00); }
+        .diagnosi-pallino.verde { background: radial-gradient(circle at 30% 30%, #66bb6a, #2e7d32); }
         .diagnosi-testo { flex: 1; min-width: 0; }
-        .diagnosi-nome { font-size: clamp(15px, 3.8vw, 17px); font-weight: 600; color: #222; line-height: 1.25; }
-        .diagnosi-nota { font-size: clamp(12px, 3.2vw, 14px); color: #666; margin-top: 2px; line-height: 1.3; }
+        .diagnosi-nome { font-size: clamp(15px, 3.8vw, 17px); font-weight: 600; color: var(--testo); line-height: 1.25; }
+        .diagnosi-nota { font-size: clamp(12px, 3.2vw, 14px); color: var(--testo-soft); margin-top: 3px; line-height: 1.35; }
+
+        #contesto-info {
+            width: 100%; max-width: 520px;
+            font-size: clamp(11px, 2.8vw, 12.5px);
+            color: var(--testo-soft); text-align: center;
+            padding: 4px 12px; display: none; line-height: 1.45;
+        }
+
+        .footer {
+            background: white; padding: 16px 18px 20px;
+            border-radius: 28px 28px 0 0;
+            box-shadow: 0 -8px 24px rgba(0,0,0,0.07);
+            position: relative; z-index: 5;
+        }
+        .btn-foto {
+            width: 100%;
+            background: linear-gradient(180deg, var(--verde-pulsante) 0%, var(--verde-pulsante-scuro) 100%);
+            color: white; border: none; border-radius: 18px;
+            padding: 22px; font-size: clamp(20px, 5vw, 23px); font-weight: 700;
+            cursor: pointer; letter-spacing: 0.3px;
+            box-shadow: 0 5px 0 var(--verde-pulsante-bordo), 0 6px 18px rgba(46, 125, 50, 0.32);
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .btn-foto:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--verde-pulsante-bordo), 0 3px 8px rgba(46, 125, 50, 0.32); }
+        .btn-galleria {
+            width: 100%; background: transparent; color: var(--verde);
+            border: 2px solid var(--verde-accento); border-radius: 14px;
+            padding: 11px; font-size: 15px; font-weight: 600;
+            cursor: pointer; margin-top: 10px;
+            transition: background 0.15s;
+        }
+        .btn-galleria:active { background: #ebf5ef; }
+
+        .modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0, 30, 15, 0.7);
+            backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 100; padding: 20px;
+            animation: fadeInUp 0.2s ease;
+        }
+        .modal-overlay.nascosto { display: none; }
+        .modal-box {
+            background: white; padding: 26px 24px;
+            border-radius: 22px; width: 100%; max-width: 360px;
+            text-align: center; box-shadow: var(--ombra-grande);
+        }
+        .modal-box h2 { color: var(--verde); margin: 0 0 10px; font-size: 22px; }
+        .modal-box p { font-size: 14px; color: var(--testo-soft); margin: 0 0 16px; line-height: 1.45; }
+        .modal-box input {
+            width: 100%; padding: 13px; font-size: 16px;
+            border: 2px solid var(--bordo); border-radius: 12px;
+            margin-bottom: 12px; outline: none;
+            transition: border-color 0.15s;
+        }
+        .modal-box input:focus { border-color: var(--verde-accento); }
+        .modal-box button {
+            width: 100%;
+            background: linear-gradient(180deg, var(--verde-pulsante) 0%, var(--verde-pulsante-scuro) 100%);
+            color: white; border: none; border-radius: 14px;
+            padding: 15px; font-size: 17px; font-weight: 700; cursor: pointer;
+            box-shadow: 0 3px 0 var(--verde-pulsante-bordo);
+        }
+        .modal-box button:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--verde-pulsante-bordo); }
+        #errore-key { color: var(--allerta); font-size: 14px; margin-top: 10px; min-height: 18px; }
 
         @media (max-height: 700px) {
             #anteprima { max-height: 90px; width: clamp(120px, 35vw, 180px); }
-            .header { padding: 10px 15px; font-size: 17px; }
-            .footer { padding: 12px 16px; }
-            .btn-foto { padding: 18px; font-size: 20px; }
+            .header { padding: 10px 15px; }
+            .header-sottotitolo { display: none; }
+            .footer { padding: 12px 16px 14px; }
+            .btn-foto { padding: 17px; font-size: 19px; }
+            #display-area { gap: 8px; padding: 12px 14px 10px; }
         }
-        
-        .loader { display: none; width: 50px; height: 50px; border: 5px solid #f3f3f3; border-top: 5px solid var(--verde); border-radius: 50%; animation: spin 1s linear infinite; margin: 20px; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-
-        .footer { background: white; padding: 20px; border-radius: 30px 30px 0 0; box-shadow: 0 -5px 20px rgba(0,0,0,0.1); }
-        .btn-foto { width: 100%; background: #2e7d32; color: white; border: none; border-radius: 20px; padding: 25px; font-size: 24px; font-weight: bold; cursor: pointer; box-shadow: 0 6px 0 #1b3d17; }
-        .btn-foto:active { transform: translateY(4px); box-shadow: 0 2px 0 #1b3d17; }
-        .btn-galleria { width: 100%; background: white; color: var(--verde); border: 2px solid var(--verde); border-radius: 15px; padding: 12px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 12px; }
-        .btn-galleria:active { background: #f0f0f0; }
-
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; justify-content: center; align-items: center; z-index: 100; padding: 20px; }
-        .modal-overlay.nascosto { display: none; }
-        .modal-box { background: white; padding: 25px; border-radius: 20px; width: 100%; max-width: 360px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
-        .modal-box h2 { color: var(--verde); margin: 0 0 10px; }
-        .modal-box p { font-size: 14px; color: #555; margin: 0 0 15px; }
-        .modal-box input { width: 100%; padding: 12px; font-size: 16px; border: 2px solid #ccc; border-radius: 10px; box-sizing: border-box; margin-bottom: 12px; }
-        .modal-box button { width: 100%; background: var(--verde); color: white; border: none; border-radius: 12px; padding: 15px; font-size: 18px; font-weight: bold; cursor: pointer; }
-        #errore-key { color: var(--allerta); font-size: 14px; margin-top: 10px; min-height: 18px; }
     </style>
 </head>
 <body>
@@ -77,7 +214,13 @@
         </div>
     </div>
 
-    <div class="header">AGENTE OLIVETO: ELIO</div>
+    <div class="header">
+        <div class="header-icona">🫒</div>
+        <div class="header-testo">
+            <div class="header-titolo">AGENTE OLIVETO: ELIO</div>
+            <div class="header-sottotitolo">Assistente per il tuo oliveto</div>
+        </div>
+    </div>
 
     <div id="display-area">
         <img id="anteprima" src="">
