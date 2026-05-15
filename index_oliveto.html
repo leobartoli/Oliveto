@@ -20,6 +20,8 @@
         .footer { background: white; padding: 20px; border-radius: 30px 30px 0 0; box-shadow: 0 -5px 20px rgba(0,0,0,0.1); }
         .btn-foto { width: 100%; background: #2e7d32; color: white; border: none; border-radius: 20px; padding: 25px; font-size: 24px; font-weight: bold; cursor: pointer; box-shadow: 0 6px 0 #1b3d17; }
         .btn-foto:active { transform: translateY(4px); box-shadow: 0 2px 0 #1b3d17; }
+        .btn-galleria { width: 100%; background: white; color: var(--verde); border: 2px solid var(--verde); border-radius: 15px; padding: 12px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 12px; }
+        .btn-galleria:active { background: #f0f0f0; }
 
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: flex; justify-content: center; align-items: center; z-index: 100; padding: 20px; }
         .modal-overlay.nascosto { display: none; }
@@ -52,8 +54,10 @@
     </div>
 
     <div class="footer">
-        <input type="file" id="input-file" accept="image/*" capture="camera" style="display:none">
+        <input type="file" id="input-file" accept="image/*" capture="environment" style="display:none">
+        <input type="file" id="input-file-galleria" accept="image/*" style="display:none">
         <button class="btn-foto" id="btn-attiva">📸 SCATTA E ANALIZZA</button>
+        <button class="btn-galleria" id="btn-galleria">🖼️ Carica foto dal dispositivo</button>
     </div>
 
 <script>
@@ -65,6 +69,8 @@
 
     const btnAttiva = document.getElementById('btn-attiva');
     const inputFile = document.getElementById('input-file');
+    const btnGalleria = document.getElementById('btn-galleria');
+    const inputFileGalleria = document.getElementById('input-file-galleria');
     const testoAgente = document.getElementById('testo-agente');
     const anteprima = document.getElementById('anteprima');
     const loader = document.getElementById('loader');
@@ -87,14 +93,18 @@
     btnConfermaKey.addEventListener('click', confermaChiave);
     inputKey.addEventListener('keydown', (e) => { if (e.key === 'Enter') confermaChiave(); });
 
-    // 1. Attivazione Fotocamera
+    // 1. Attivazione Fotocamera / Galleria
     btnAttiva.addEventListener('click', () => {
         if (!API_KEY) { modalKey.classList.remove('nascosto'); return; }
         inputFile.click();
     });
+    btnGalleria.addEventListener('click', () => {
+        if (!API_KEY) { modalKey.classList.remove('nascosto'); return; }
+        inputFileGalleria.click();
+    });
 
     // 2. Gestione Foto
-    inputFile.addEventListener('change', async (e) => {
+    async function gestisciFoto(e) {
         const file = e.target.files[0];
         if (!file) return;
 
@@ -111,7 +121,9 @@
         } catch (err) {
             gestisciErrore("Problema tecnico nel processare l'immagine.");
         }
-    });
+    }
+    inputFile.addEventListener('change', gestisciFoto);
+    inputFileGalleria.addEventListener('change', gestisciFoto);
 
     // 3. Chiamata a Gemini
     async function chiediAGemini(base64Data) {
