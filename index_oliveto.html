@@ -126,6 +126,7 @@
         .diagnosi-testo { flex: 1; min-width: 0; }
         .diagnosi-nome { font-size: clamp(15px, 3.8vw, 17px); font-weight: 600; color: var(--testo); line-height: 1.25; }
         .diagnosi-nota { font-size: clamp(12px, 3.2vw, 14px); color: var(--testo-soft); margin-top: 3px; line-height: 1.35; }
+        .diagnosi-foto { font-size: clamp(11px, 3vw, 12.5px); color: var(--verde-medio); margin-top: 4px; font-weight: 500; }
 
         #contesto-info {
             width: 100%; max-width: 520px;
@@ -158,6 +159,57 @@
             transition: background 0.15s;
         }
         .btn-galleria:active { background: #ebf5ef; }
+
+        #giro-status {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 12px; padding: 8px 14px;
+            background: #eef3ee; border-radius: 12px;
+            font-size: 14px; color: var(--testo); font-weight: 600;
+        }
+        #btn-ricomincia {
+            font-size: 13px; color: var(--testo-soft);
+            text-decoration: underline; cursor: pointer;
+            background: none; border: none; padding: 2px 6px;
+        }
+        #btn-ricomincia:active { color: var(--allerta); }
+
+        .btn-analizza {
+            width: 100%;
+            background: linear-gradient(180deg, var(--verde-pulsante) 0%, var(--verde-pulsante-scuro) 100%);
+            color: white; border: none; border-radius: 14px;
+            padding: 16px; font-size: clamp(16px, 4.3vw, 18px); font-weight: 700;
+            cursor: pointer; margin-top: 10px;
+            box-shadow: 0 4px 0 var(--verde-pulsante-bordo), 0 4px 14px rgba(46,125,50,0.25);
+            transition: opacity 0.2s, transform 0.1s, box-shadow 0.1s;
+        }
+        .btn-analizza:disabled {
+            opacity: 0.45; cursor: not-allowed;
+            background: #b0b0b0;
+            box-shadow: 0 2px 0 #777;
+        }
+        .btn-analizza:not(:disabled):active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 var(--verde-pulsante-bordo), 0 2px 6px rgba(46,125,50,0.25);
+        }
+
+        #thumbnails {
+            display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+            max-width: 520px; width: 100%; padding: 2px 0;
+        }
+        #thumbnails:empty { display: none; }
+        .thumb {
+            width: 58px; height: 58px; border-radius: 10px;
+            background-size: cover; background-position: center;
+            border: 2px solid white; box-shadow: var(--ombra-card);
+            flex-shrink: 0; position: relative;
+            animation: scaleIn 0.25s ease;
+        }
+        .thumb-num {
+            position: absolute; bottom: 2px; right: 2px;
+            background: rgba(0,0,0,0.65); color: white;
+            font-size: 10px; font-weight: 700;
+            border-radius: 4px; padding: 1px 4px; line-height: 1.2;
+        }
 
         .modal-overlay {
             position: fixed; inset: 0;
@@ -234,14 +286,20 @@
         </div>
         <div id="azione-banner"></div>
         <div id="lista-diagnosi"></div>
+        <div id="thumbnails"></div>
         <div id="contesto-info"></div>
     </div>
 
     <div class="footer">
         <input type="file" id="input-file" accept="image/*" capture="environment" style="display:none">
         <input type="file" id="input-file-galleria" accept="image/*" style="display:none">
-        <button class="btn-foto" id="btn-attiva">📸 SCATTA E ANALIZZA</button>
-        <button class="btn-galleria" id="btn-galleria">🖼️ Carica foto dal dispositivo</button>
+        <div id="giro-status">
+            <span id="giro-progresso">Pronto per iniziare il giro</span>
+            <button id="btn-ricomincia" type="button" style="display:none">Ricomincia</button>
+        </div>
+        <button class="btn-foto" id="btn-attiva">📸 SCATTA — Foto 1/10</button>
+        <button class="btn-galleria" id="btn-galleria">🖼️ Aggiungi dal dispositivo</button>
+        <button class="btn-analizza" id="btn-analizza" disabled>✅ Analizza il giro (servono almeno 10 foto)</button>
     </div>
 
 <script>
@@ -269,6 +327,13 @@
     const resocontoSaluto = resocontoBox.querySelector('.resoconto-saluto');
     const resocontoRischi = resocontoBox.querySelector('.resoconto-rischi');
     const resocontoConsiglio = resocontoBox.querySelector('.resoconto-consiglio');
+    const thumbnailsBox = document.getElementById('thumbnails');
+    const giroProgresso = document.getElementById('giro-progresso');
+    const btnRicomincia = document.getElementById('btn-ricomincia');
+    const btnAnalizza = document.getElementById('btn-analizza');
+
+    const FOTO_MINIME = 10;
+    let giroFoto = []; // { base64, lat, lon, alt, timestamp }
 
     const AVVERSITA = [
         "Mosca dell'olivo",
@@ -301,6 +366,9 @@
     btnConfermaKey.addEventListener('click', confermaChiave);
     inputKey.addEventListener('keydown', (e) => { if (e.key === 'Enter') confermaChiave(); });
 
+    // Inizializza UI del giro (label, pulsanti)
+    // (chiamata in fondo allo script per assicurare che tutti gli element refs esistano)
+
     // 1. Attivazione Fotocamera / Galleria
     btnAttiva.addEventListener('click', () => {
         if (!API_KEY) { modalKey.classList.remove('nascosto'); return; }
@@ -311,40 +379,272 @@
         inputFileGalleria.click();
     });
 
-    // 2. Gestione Foto
+    // 2. Aggiunta foto al giro (con GPS al momento dello scatto)
     async function gestisciFoto(e) {
         const file = e.target.files[0];
         if (!file) return;
+        e.target.value = ""; // permette di selezionare lo stesso file due volte
 
-        // Reset UI
-        anteprima.src = URL.createObjectURL(file);
-        anteprima.style.display = "block";
-        loader.style.display = "block";
+        // Nascondi resoconto iniziale appena parte il giro
+        resocontoBox.style.display = "none";
         listaDiagnosi.style.display = "none";
-        listaDiagnosi.innerHTML = "";
         azioneBanner.style.display = "none";
         contestoInfo.style.display = "none";
-        contestoInfo.innerText = "";
-        resocontoBox.style.display = "none";
-        testoAgente.style.display = "block";
-        testoAgente.innerText = "Sto leggendo posizione e meteo...";
-        parla("Un momento Elio, sto guardando la pianta e il meteo.");
+        anteprima.style.display = "none";
+        testoAgente.style.display = "none";
 
         try {
-            const [base64Image, contesto] = await Promise.all([
+            const [base64Image, gps] = await Promise.all([
                 resizeAndBase64(file),
-                costruisciContesto()
+                ottieniGPS()
             ]);
-            testoAgente.innerText = "Sto analizzando l'oliveto...";
-            const contestoTesto = formattaContesto(contesto);
-            mostraContesto(contestoTesto);
-            await chiediAGemini(base64Image, contestoTesto);
+            let alt = gps ? gps.alt : null;
+            if (gps && alt == null) {
+                alt = await ottieniAltitudine(gps.lat, gps.lon);
+            }
+            giroFoto.push({
+                base64: base64Image,
+                lat: gps ? gps.lat : null,
+                lon: gps ? gps.lon : null,
+                alt: alt,
+                timestamp: Date.now()
+            });
+            aggiornaGiroUI();
         } catch (err) {
-            gestisciErrore("Problema tecnico nel processare l'immagine.");
+            console.warn("Errore aggiunta foto:", err);
+            testoAgente.style.display = "block";
+            testoAgente.innerText = "Non riesco ad aggiungere questa foto. Riprova.";
         }
     }
     inputFile.addEventListener('change', gestisciFoto);
     inputFileGalleria.addEventListener('change', gestisciFoto);
+
+    btnRicomincia.addEventListener('click', () => {
+        giroFoto = [];
+        aggiornaGiroUI();
+        listaDiagnosi.style.display = "none";
+        azioneBanner.style.display = "none";
+        contestoInfo.style.display = "none";
+        if (API_KEY) avviaResocontoIniziale();
+    });
+
+    btnAnalizza.addEventListener('click', () => {
+        if (giroFoto.length < FOTO_MINIME) return;
+        analizzaGiro();
+    });
+
+    // 2bis. Aggiorna pulsanti, contatori e miniature
+    function aggiornaGiroUI() {
+        thumbnailsBox.innerHTML = "";
+        giroFoto.forEach((f, i) => {
+            const div = document.createElement('div');
+            div.className = 'thumb';
+            div.style.backgroundImage = `url("data:image/jpeg;base64,${f.base64}")`;
+            const num = document.createElement('span');
+            num.className = 'thumb-num';
+            num.innerText = (i + 1);
+            div.appendChild(num);
+            thumbnailsBox.appendChild(div);
+        });
+
+        const n = giroFoto.length;
+        if (n === 0) {
+            giroProgresso.innerText = "Pronto per iniziare il giro";
+            btnRicomincia.style.display = "none";
+            btnAttiva.innerText = "📸 SCATTA — Foto 1/" + FOTO_MINIME;
+            btnAnalizza.disabled = true;
+            btnAnalizza.innerText = `✅ Analizza il giro (servono almeno ${FOTO_MINIME} foto)`;
+        } else if (n < FOTO_MINIME) {
+            giroProgresso.innerText = `Giro in corso: ${n}/${FOTO_MINIME} foto`;
+            btnRicomincia.style.display = "inline";
+            btnAttiva.innerText = `📸 SCATTA — Foto ${n + 1}/${FOTO_MINIME}`;
+            btnAnalizza.disabled = true;
+            btnAnalizza.innerText = `✅ Analizza il giro (mancano ${FOTO_MINIME - n} foto)`;
+        } else {
+            giroProgresso.innerText = `Giro pronto: ${n} foto raccolte`;
+            btnRicomincia.style.display = "inline";
+            btnAttiva.innerText = "📸 Aggiungi altra foto";
+            btnAnalizza.disabled = false;
+            btnAnalizza.innerText = "✅ ANALIZZA IL GIRO";
+        }
+    }
+
+    // 2ter. Statistiche spaziali del giro
+    function distanzaMetri(lat1, lon1, lat2, lon2) {
+        const R = 6371000, toRad = d => d * Math.PI / 180;
+        const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+        const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    function direzioneCardinale(lat1, lon1, lat2, lon2) {
+        const toRad = d => d * Math.PI / 180, toDeg = r => r * 180 / Math.PI;
+        const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
+        const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+                  Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2 - lon1));
+        const bearing = (toDeg(Math.atan2(y, x)) + 360) % 360;
+        const punti = ["N", "NE", "E", "SE", "S", "SO", "O", "NO"];
+        return punti[Math.round(bearing / 45) % 8];
+    }
+
+    function calcolaStatisticheGiro(foto) {
+        const conGps = foto.filter(f => f.lat != null && f.lon != null);
+        if (conGps.length === 0) return null;
+        const lats = conGps.map(f => f.lat);
+        const lons = conGps.map(f => f.lon);
+        const alts = conGps.filter(f => f.alt != null).map(f => f.alt);
+        const centro = {
+            lat: lats.reduce((s,x) => s+x, 0) / lats.length,
+            lon: lons.reduce((s,x) => s+x, 0) / lons.length
+        };
+        const altMin = alts.length ? Math.min(...alts) : null;
+        const altMax = alts.length ? Math.max(...alts) : null;
+        const altMedia = alts.length ? alts.reduce((s,x) => s+x, 0) / alts.length : null;
+        return { centro, altMin, altMax, altMedia, conGps: conGps.length, totale: foto.length };
+    }
+
+    function descriviFotoNelGiro(foto, stat) {
+        if (!stat) return foto.map((_, i) => `Foto ${i+1}: posizione non disponibile.`).join("\n");
+        return foto.map((f, i) => {
+            if (f.lat == null || f.lon == null) return `Foto ${i+1}: posizione non disponibile.`;
+            const dist = Math.round(distanzaMetri(stat.centro.lat, stat.centro.lon, f.lat, f.lon));
+            const dir = direzioneCardinale(stat.centro.lat, stat.centro.lon, f.lat, f.lon);
+            let descr = `Foto ${i+1}: ${dist} m a ${dir} del centro`;
+            if (f.alt != null && stat.altMedia != null) {
+                const delta = Math.round(f.alt - stat.altMedia);
+                const tipo = delta > 5 ? "punto alto, possibile crinale o pendio in alto"
+                          : delta < -5 ? "punto basso, possibile fondovalle o avvallamento"
+                          : "altezza media";
+                descr += `, ${Math.round(f.alt)} m s.l.m. (${delta >= 0 ? "+" : ""}${delta} m vs media, ${tipo})`;
+            }
+            return descr + ".";
+        }).join("\n");
+    }
+
+    // 2quater. Analizza il giro: invia tutte le foto + contesto spaziale a Gemini
+    async function analizzaGiro() {
+        thumbnailsBox.style.opacity = "0.4";
+        loader.style.display = "block";
+        listaDiagnosi.style.display = "none";
+        azioneBanner.style.display = "none";
+        contestoInfo.style.display = "none";
+        testoAgente.style.display = "block";
+        testoAgente.innerText = "Sto leggendo il meteo e analizzando tutto il giro...";
+        parla("Un momento Elio, sto guardando tutte le foto e il meteo.");
+
+        const stat = calcolaStatisticheGiro(giroFoto);
+        let meteo = null, altCentro = null;
+        if (stat) {
+            [meteo, altCentro] = await Promise.all([
+                ottieniMeteo(stat.centro.lat, stat.centro.lon),
+                stat.altMedia == null ? ottieniAltitudine(stat.centro.lat, stat.centro.lon) : Promise.resolve(stat.altMedia)
+            ]);
+        }
+
+        const ctxAmbiente = formattaContestoGiro(stat, meteo, altCentro);
+        const ctxSpaziale = descriviFotoNelGiro(giroFoto, stat);
+        mostraContesto(ctxAmbiente);
+
+        const prompt = `Sei un agronomo che aiuta Elio, contadino anziano, a valutare lo STATO COMPLESSIVO del suo oliveto.
+Elio ha fatto un giro e ti manda ${giroFoto.length} foto (numerate 1..${giroFoto.length}) di piante diverse nell'oliveto.
+
+CONTESTO AMBIENTALE:
+${ctxAmbiente || "(contesto ambientale non disponibile)"}
+
+POSIZIONE RECIPROCA DELLE FOTO:
+${ctxSpaziale}
+
+Per OGNUNA di queste avversita' valuta se e' presente o probabile in qualche pianta del giro:
+${AVVERSITA.map(a => "- " + a).join("\n")}
+
+Restituisci SOLO un JSON:
+{
+  "saluto": "...",
+  "diagnosi": [
+    { "nome": "...", "livello": "rosso|arancione|verde", "nota": "...", "foto_interessate": [1, 4, 7] }
+  ],
+  "azione": "..."
+}
+
+Regole:
+- "saluto" e' UNA frase max 25 parole con stato generale (es. "Elio, il giro complessivamente e' buono, ma occhio a...").
+- "diagnosi" contiene TUTTE le ${AVVERSITA.length} avversita' nell'ordine elencato.
+- "livello": "rosso" se segni chiari su una o piu' foto, "arancione" se sospetto o probabile vista zona/meteo, "verde" se non rilevato.
+- "nota": frase brevissima (max 12 parole). Quando utile fai riferimento alla zona (es. "concentrata nei punti bassi, dove ristagna umidita'"). Stringa vuota se livello verde.
+- "foto_interessate": elenco dei numeri delle foto in cui vedi il problema (vuoto se livello verde).
+- "azione": UNA frase (max 18 parole) con la cosa piu' importante da fare adesso, tenendo conto del meteo recente.
+- Niente latino, niente nomi scientifici, niente markdown, niente parentesi tonde.`;
+
+        const parti = [{ text: prompt }];
+        giroFoto.forEach(f => {
+            parti.push({ inlineData: { mimeType: "image/jpeg", data: f.base64 } });
+        });
+
+        const payload = {
+            contents: [{ parts: parti }],
+            generationConfig: {
+                temperature: 0.2,
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: "object",
+                    properties: {
+                        saluto: { type: "string" },
+                        diagnosi: {
+                            type: "array",
+                            items: {
+                                type: "object",
+                                properties: {
+                                    nome: { type: "string" },
+                                    livello: { type: "string", enum: ["rosso", "arancione", "verde"] },
+                                    nota: { type: "string" },
+                                    foto_interessate: { type: "array", items: { type: "integer" } }
+                                },
+                                required: ["nome", "livello"]
+                            }
+                        },
+                        azione: { type: "string" }
+                    },
+                    required: ["saluto", "diagnosi", "azione"]
+                }
+            }
+        };
+
+        try {
+            const parsed = await chiamaGeminiJSON(payload);
+            mostraDiagnosi(parsed);
+        } catch (err) {
+            gestisciErrore(err.message || "errore sconosciuto");
+        } finally {
+            loader.style.display = "none";
+            thumbnailsBox.style.opacity = "1";
+        }
+    }
+
+    function formattaContestoGiro(stat, meteo, altCentro) {
+        if (!stat) return "";
+        const righe = [];
+        righe.push(`Oliveto: ${stat.totale} foto, ${stat.conGps} con GPS.`);
+        righe.push(`Centro oliveto: lat ${stat.centro.lat.toFixed(4)}, lon ${stat.centro.lon.toFixed(4)}.`);
+        if (altCentro != null) righe.push(`Altitudine media: ${Math.round(altCentro)} m s.l.m.`);
+        if (stat.altMin != null && stat.altMax != null && stat.altMax - stat.altMin > 1) {
+            righe.push(`Dislivello fra le foto: da ${Math.round(stat.altMin)} a ${Math.round(stat.altMax)} m (${Math.round(stat.altMax - stat.altMin)} m di salto).`);
+        }
+        righe.push(`Data: ${new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}.`);
+        if (meteo && meteo.current) {
+            const c = meteo.current;
+            righe.push(`Meteo adesso: ${Math.round(c.temperature_2m)}°C, umidita' ${Math.round(c.relative_humidity_2m)}%, vento ${Math.round(c.wind_speed_10m)} km/h.`);
+        }
+        if (meteo && meteo.daily && meteo.daily.precipitation_sum) {
+            const d = meteo.daily;
+            const past = a => (a || []).slice(0, 7);
+            const somma = past(d.precipitation_sum).reduce((s,x) => s + (x||0), 0);
+            const tmax = past(d.temperature_2m_max);
+            const tmin = past(d.temperature_2m_min);
+            const avg = a => a.length ? a.reduce((s,x) => s + (x||0), 0) / a.length : null;
+            righe.push(`Ultimi 7 giorni: pioggia ${somma.toFixed(1)} mm, temp medie ${avg(tmin).toFixed(1)}-${avg(tmax).toFixed(1)}°C.`);
+        }
+        return righe.join(" ");
+    }
 
     // 2bis. Contesto ambientale: GPS + altitudine + meteo via Open-Meteo (gratis, niente API key)
     function ottieniGPS() {
@@ -557,71 +857,6 @@ Regole:
         parla(pulisciTesto(vocale));
     }
 
-    // 3. Chiamata a Gemini
-    async function chiediAGemini(base64Data, contestoTesto) {
-        const blocoContesto = contestoTesto
-            ? `\nCONTESTO AMBIENTALE (usalo per pesare i rischi tipici della zona, della stagione e del meteo):\n${contestoTesto}\n`
-            : "";
-
-        const prompt = `Sei un agronomo che aiuta Elio, contadino anziano, a capire lo stato di un olivo da una foto.${blocoContesto}
-Per OGNUNA di queste avversita' valuta dalla foto E dal contesto se e' presente o probabile:
-${AVVERSITA.map(a => "- " + a).join("\n")}
-
-Restituisci SOLO un JSON con questa struttura:
-{
-  "diagnosi": [ { "nome": "...", "livello": "rosso|arancione|verde", "nota": "..." }, ... ],
-  "azione": "..."
-}
-
-Regole:
-- L'array "diagnosi" deve contenere tutte le ${AVVERSITA.length} avversita' nello stesso ordine elencato.
-- "livello": "rosso" se vedi segni chiari sulla foto; "arancione" se hai un sospetto visivo o se il contesto (meteo, stagione, zona, altitudine) rende quella avversita' molto probabile in questo momento; "verde" altrimenti.
-- "nota" e' una frase brevissima in italiano semplice (max 8 parole) o stringa vuota. Puo' fare riferimento al meteo o alla stagione se utile.
-- "azione" e' UNA frase breve (max 15 parole) con cosa fare adesso, tenendo conto anche del meteo recente. Se tutto verde scrivi "Pianta sana, vai avanti cosi'.".
-- Niente latino, niente nomi scientifici, niente markdown, niente parentesi tonde.`;
-
-        const payload = {
-            contents: [{
-                parts: [
-                    { text: prompt },
-                    { inlineData: { mimeType: "image/jpeg", data: base64Data } }
-                ]
-            }],
-            generationConfig: {
-                temperature: 0.2,
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: "object",
-                    properties: {
-                        diagnosi: {
-                            type: "array",
-                            items: {
-                                type: "object",
-                                properties: {
-                                    nome: { type: "string" },
-                                    livello: { type: "string", enum: ["rosso", "arancione", "verde"] },
-                                    nota: { type: "string" }
-                                },
-                                required: ["nome", "livello"]
-                            }
-                        },
-                        azione: { type: "string" }
-                    },
-                    required: ["diagnosi", "azione"]
-                }
-            }
-        };
-
-        try {
-            const parsed = await chiamaGeminiJSON(payload);
-            mostraDiagnosi(parsed);
-        } catch (err) {
-            gestisciErrore(err.message || "errore sconosciuto");
-        } finally {
-            loader.style.display = "none";
-        }
-    }
-
     // 4. Compressione Immagine (Fondamentale per non far crashare l'invio)
     function resizeAndBase64(file) {
         return new Promise((resolve) => {
@@ -663,22 +898,20 @@ Regole:
     function mostraDiagnosi(parsed) {
         const diagnosi = Array.isArray(parsed.diagnosi) ? parsed.diagnosi : [];
         const azione = pulisciTesto(parsed.azione || "");
+        const saluto = pulisciTesto(parsed.saluto || "");
 
         const rossi = diagnosi.filter(d => d.livello === "rosso");
         const arancioni = diagnosi.filter(d => d.livello === "arancione");
 
-        // Ordino: rossi -> arancioni -> verdi
         const ordine = { rosso: 0, arancione: 1, verde: 2 };
         const ordinate = diagnosi.slice().sort((a, b) => (ordine[a.livello] ?? 3) - (ordine[b.livello] ?? 3));
 
-        // Banner azione
         azioneBanner.classList.remove('allerta', 'attenzione');
         if (rossi.length) azioneBanner.classList.add('allerta');
         else if (arancioni.length) azioneBanner.classList.add('attenzione');
-        azioneBanner.innerText = azione || (rossi.length ? "Attenzione, c'e' un problema." : "Pianta sana.");
+        azioneBanner.innerText = azione || (rossi.length ? "Attenzione, c'e' un problema." : "Oliveto in buona salute.");
         azioneBanner.style.display = "block";
 
-        // Lista
         listaDiagnosi.innerHTML = "";
         ordinate.forEach(d => {
             const item = document.createElement('div');
@@ -698,6 +931,14 @@ Regole:
                 notaEl.innerText = nota;
                 testo.appendChild(notaEl);
             }
+            // Foto interessate
+            const fotoInt = Array.isArray(d.foto_interessate) ? d.foto_interessate.filter(n => Number.isInteger(n) && n >= 1) : [];
+            if (fotoInt.length && d.livello !== "verde") {
+                const fotoEl = document.createElement('div');
+                fotoEl.className = 'diagnosi-foto';
+                fotoEl.innerText = `📷 visibile su: ${fotoInt.map(n => "#" + n).join(", ")}`;
+                testo.appendChild(fotoEl);
+            }
             item.appendChild(pallino);
             item.appendChild(testo);
             listaDiagnosi.appendChild(item);
@@ -705,16 +946,15 @@ Regole:
         listaDiagnosi.style.display = "block";
         testoAgente.style.display = "none";
 
-        // Riassunto vocale corto
         let riassunto;
         if (rossi.length) {
             const nomi = rossi.map(d => d.nome).join(", ");
-            riassunto = `Elio, attenzione: ${nomi}. ${azione}`;
+            riassunto = `${saluto || "Elio,"} attenzione: ${nomi}. ${azione}`;
         } else if (arancioni.length) {
             const nomi = arancioni.map(d => d.nome).join(", ");
-            riassunto = `Elio, da controllare: ${nomi}. ${azione}`;
+            riassunto = `${saluto || "Elio,"} da controllare: ${nomi}. ${azione}`;
         } else {
-            riassunto = `Elio, la pianta sembra sana. ${azione}`;
+            riassunto = `${saluto || "Elio, l'oliveto sembra in buona salute."} ${azione}`;
         }
         parla(pulisciTesto(riassunto));
     }
@@ -748,7 +988,11 @@ Regole:
         testoAgente.innerText = "Elio, scusa: " + txt;
         parla(testoAgente.innerText);
         loader.style.display = "none";
+        thumbnailsBox.style.opacity = "1";
     }
+
+    // Inizializza UI del giro
+    aggiornaGiroUI();
 </script>
 </body>
 </html>
