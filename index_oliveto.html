@@ -18,6 +18,7 @@
         #azione-banner.allerta { background: var(--allerta); }
         #azione-banner.attenzione { background: #ef6c00; }
 
+        #contesto-info { width: 100%; max-width: 520px; font-size: clamp(11px, 2.8vw, 12.5px); color: #777; text-align: center; padding: 0 6px; display: none; line-height: 1.4; }
         #lista-diagnosi { width: 100%; max-width: 520px; display: none; }
         .diagnosi-item { display: flex; align-items: center; padding: 10px 12px; background: white; border-radius: 11px; margin-bottom: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
         .diagnosi-pallino { width: 22px; height: 22px; border-radius: 50%; margin-right: 12px; flex-shrink: 0; box-shadow: inset 0 -3px 6px rgba(0,0,0,0.2); }
@@ -74,6 +75,7 @@
         <div id="testo-agente">"Ciao Elio. Sono pronto. Premi il tasto verde e inquadra la pianta o le olive."</div>
         <div id="azione-banner"></div>
         <div id="lista-diagnosi"></div>
+        <div id="contesto-info"></div>
     </div>
 
     <div class="footer">
@@ -103,6 +105,7 @@
     const erroreKey = document.getElementById('errore-key');
     const azioneBanner = document.getElementById('azione-banner');
     const listaDiagnosi = document.getElementById('lista-diagnosi');
+    const contestoInfo = document.getElementById('contesto-info');
 
     const AVVERSITA = [
         "Mosca dell'olivo",
@@ -156,13 +159,21 @@
         listaDiagnosi.style.display = "none";
         listaDiagnosi.innerHTML = "";
         azioneBanner.style.display = "none";
+        contestoInfo.style.display = "none";
+        contestoInfo.innerText = "";
         testoAgente.style.display = "block";
-        testoAgente.innerText = "Sto analizzando l'oliveto...";
-        parla("Un momento Elio, sto guardando la pianta.");
+        testoAgente.innerText = "Sto leggendo posizione e meteo...";
+        parla("Un momento Elio, sto guardando la pianta e il meteo.");
 
         try {
-            const base64Image = await resizeAndBase64(file);
-            await chiediAGemini(base64Image);
+            const [base64Image, contesto] = await Promise.all([
+                resizeAndBase64(file),
+                costruisciContesto()
+            ]);
+            testoAgente.innerText = "Sto analizzando l'oliveto...";
+            const contestoTesto = formattaContesto(contesto);
+            mostraContesto(contestoTesto);
+            await chiediAGemini(base64Image, contestoTesto);
         } catch (err) {
             gestisciErrore("Problema tecnico nel processare l'immagine.");
         }
@@ -170,10 +181,92 @@
     inputFile.addEventListener('change', gestisciFoto);
     inputFileGalleria.addEventListener('change', gestisciFoto);
 
+    // 2bis. Contesto ambientale: GPS + altitudine + meteo via Open-Meteo (gratis, niente API key)
+    function ottieniGPS() {
+        return new Promise((resolve) => {
+            if (!navigator.geolocation) return resolve(null);
+            navigator.geolocation.getCurrentPosition(
+                (pos) => resolve({
+                    lat: pos.coords.latitude,
+                    lon: pos.coords.longitude,
+                    alt: pos.coords.altitude
+                }),
+                () => resolve(null),
+                { timeout: 8000, maximumAge: 120000, enableHighAccuracy: false }
+            );
+        });
+    }
+
+    async function fetchConTimeout(url, ms = 6000) {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), ms);
+        try { return await fetch(url, { signal: ctrl.signal }); }
+        finally { clearTimeout(t); }
+    }
+
+    async function ottieniMeteo(lat, lon) {
+        try {
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+                `&current=temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m` +
+                `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum` +
+                `&past_days=7&forecast_days=1&timezone=auto`;
+            const r = await fetchConTimeout(url);
+            if (!r.ok) return null;
+            return await r.json();
+        } catch { return null; }
+    }
+
+    async function ottieniAltitudine(lat, lon) {
+        try {
+            const r = await fetchConTimeout(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`);
+            if (!r.ok) return null;
+            const j = await r.json();
+            return j.elevation && j.elevation[0];
+        } catch { return null; }
+    }
+
+    async function costruisciContesto() {
+        const gps = await ottieniGPS();
+        if (!gps) return null;
+        const [meteo, altApi] = await Promise.all([
+            ottieniMeteo(gps.lat, gps.lon),
+            (gps.alt == null) ? ottieniAltitudine(gps.lat, gps.lon) : Promise.resolve(gps.alt)
+        ]);
+        return { gps, meteo, altitudine: altApi };
+    }
+
+    function formattaContesto(ctx) {
+        if (!ctx || !ctx.gps) return "";
+        const { gps, meteo, altitudine } = ctx;
+        const righe = [];
+        righe.push(`Posizione olivo: latitudine ${gps.lat.toFixed(4)}, longitudine ${gps.lon.toFixed(4)}.`);
+        if (altitudine != null) righe.push(`Altitudine: ${Math.round(altitudine)} metri.`);
+        righe.push(`Data odierna: ${new Date().toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}.`);
+        if (meteo && meteo.current) {
+            const c = meteo.current;
+            righe.push(`Meteo adesso: ${Math.round(c.temperature_2m)}°C, umidità ${Math.round(c.relative_humidity_2m)}%, vento ${Math.round(c.wind_speed_10m)} km/h, pioggia recente ${c.precipitation} mm.`);
+        }
+        if (meteo && meteo.daily && meteo.daily.precipitation_sum) {
+            const d = meteo.daily;
+            const past = (arr) => (arr || []).slice(0, 7);
+            const sommaPioggia = past(d.precipitation_sum).reduce((s, x) => s + (x || 0), 0);
+            const tmax = past(d.temperature_2m_max);
+            const tmin = past(d.temperature_2m_min);
+            const avg = (a) => a.length ? a.reduce((s, x) => s + (x || 0), 0) / a.length : null;
+            const tmaxAvg = avg(tmax), tminAvg = avg(tmin);
+            righe.push(`Ultimi 7 giorni: pioggia totale ${sommaPioggia.toFixed(1)} mm, temperature medie min ${tminAvg.toFixed(1)}°C max ${tmaxAvg.toFixed(1)}°C.`);
+        }
+        return righe.join(" ");
+    }
+
     // 3. Chiamata a Gemini
-    async function chiediAGemini(base64Data) {
-        const prompt = `Sei un agronomo che aiuta Elio, contadino anziano, a capire lo stato di un olivo da una foto.
-Per OGNUNA di queste avversita' valuta dalla foto se e' presente:
+    async function chiediAGemini(base64Data, contestoTesto) {
+        const blocoContesto = contestoTesto
+            ? `\nCONTESTO AMBIENTALE (usalo per pesare i rischi tipici della zona, della stagione e del meteo):\n${contestoTesto}\n`
+            : "";
+
+        const prompt = `Sei un agronomo che aiuta Elio, contadino anziano, a capire lo stato di un olivo da una foto.${blocoContesto}
+Per OGNUNA di queste avversita' valuta dalla foto E dal contesto se e' presente o probabile:
 ${AVVERSITA.map(a => "- " + a).join("\n")}
 
 Restituisci SOLO un JSON con questa struttura:
@@ -184,9 +277,9 @@ Restituisci SOLO un JSON con questa struttura:
 
 Regole:
 - L'array "diagnosi" deve contenere tutte le ${AVVERSITA.length} avversita' nello stesso ordine elencato.
-- "livello" e' "rosso" se vedi segni chiari, "arancione" se sospetto, "verde" se non si vede nulla.
-- "nota" e' una frase brevissima in italiano semplice (max 8 parole) o stringa vuota.
-- "azione" e' UNA frase breve (max 15 parole) con cosa fare adesso. Se tutto verde scrivi "Pianta sana, vai avanti cosi'.".
+- "livello": "rosso" se vedi segni chiari sulla foto; "arancione" se hai un sospetto visivo o se il contesto (meteo, stagione, zona, altitudine) rende quella avversita' molto probabile in questo momento; "verde" altrimenti.
+- "nota" e' una frase brevissima in italiano semplice (max 8 parole) o stringa vuota. Puo' fare riferimento al meteo o alla stagione se utile.
+- "azione" e' UNA frase breve (max 15 parole) con cosa fare adesso, tenendo conto anche del meteo recente. Se tutto verde scrivi "Pianta sana, vai avanti cosi'.".
 - Niente latino, niente nomi scientifici, niente markdown, niente parentesi tonde.`;
 
         const payload = {
@@ -288,6 +381,15 @@ Regole:
         });
     }
 
+    function mostraContesto(testo) {
+        if (!testo) {
+            contestoInfo.style.display = "none";
+            return;
+        }
+        contestoInfo.innerText = "📍 " + testo;
+        contestoInfo.style.display = "block";
+    }
+
     // Mostra la diagnosi come lista a pallini colorati + banner azione
     function mostraDiagnosi(parsed) {
         const diagnosi = Array.isArray(parsed.diagnosi) ? parsed.diagnosi : [];
@@ -371,6 +473,7 @@ Regole:
     function gestisciErrore(txt) {
         listaDiagnosi.style.display = "none";
         azioneBanner.style.display = "none";
+        contestoInfo.style.display = "none";
         testoAgente.style.display = "block";
         testoAgente.innerText = "Elio, scusa: " + txt;
         parla(testoAgente.innerText);
