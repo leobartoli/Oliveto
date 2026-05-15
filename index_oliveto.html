@@ -127,15 +127,29 @@
 
     // 3. Chiamata a Gemini
     async function chiediAGemini(base64Data) {
-        const prompt = "Sei un agronomo esperto. Elio ti mostra una foto del suo oliveto (6 ettari). Identifica se ci sono segni di mosca, occhio di pavone o stress. Rispondi in italiano, sii tecnico ma chiaro. Inizia con 'Elio,'.";
-        
+        const prompt = `Parli con Elio, un contadino anziano che ti ascolta a voce con il telefono in oliveto.
+Guarda la foto e rispondi cortissimo, da ascoltare, non da leggere.
+
+REGOLE OBBLIGATORIE:
+- Massimo 3 frasi brevi, in totale meno di 50 parole.
+- Italiano semplicissimo, parole di tutti i giorni.
+- Vietati: nomi scientifici, latino, asterischi, elenchi, titoli, parentesi, markdown.
+- Inizia con "Elio,".
+- Dì subito cosa vedi: pianta sana, oppure quale problema (mosca, occhio di pavone, stress, altro).
+- Se c'è un problema, aggiungi una sola frase con cosa fare adesso.
+- Se la foto non basta per capire, dillo in una frase e basta.`;
+
         const payload = {
             contents: [{
                 parts: [
                     { text: prompt },
                     { inlineData: { mimeType: "image/jpeg", data: base64Data } }
                 ]
-            }]
+            }],
+            generationConfig: {
+                maxOutputTokens: 200,
+                temperature: 0.3
+            }
         };
 
         try {
@@ -153,7 +167,7 @@
             }
 
             if (data.candidates && data.candidates[0]) {
-                const risposta = data.candidates[0].content.parts[0].text;
+                const risposta = pulisciTesto(data.candidates[0].content.parts[0].text);
                 testoAgente.innerText = risposta;
                 parla(risposta);
             } else {
@@ -194,10 +208,23 @@
         });
     }
 
+    // Rimuove markdown e parentetiche scientifiche prima di mostrare/pronunciare
+    function pulisciTesto(t) {
+        return t
+            .replace(/\*+/g, '')
+            .replace(/`+/g, '')
+            .replace(/^#+\s*/gm, '')
+            .replace(/^\s*[-•]\s+/gm, '')
+            .replace(/\([^)]*\)/g, '')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+    }
+
     function parla(testo) {
         window.speechSynthesis.cancel();
         const msg = new SpeechSynthesisUtterance(testo);
         msg.lang = 'it-IT';
+        msg.rate = 0.95;
         window.speechSynthesis.speak(msg);
     }
 
