@@ -61,7 +61,7 @@
     // La chiave vive solo in memoria per la durata della sessione.
     // Niente localStorage / cookie: ricaricando la pagina va reinserita.
     let API_KEY = null;
-    const URL_BASE = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+    const URL_BASE = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
     const btnAttiva = document.getElementById('btn-attiva');
     const inputFile = document.getElementById('input-file');
@@ -134,16 +134,21 @@
             });
 
             const data = await response.json();
-            
+
+            if (!response.ok) {
+                const msg = (data && data.error && data.error.message) ? data.error.message : `HTTP ${response.status}`;
+                throw new Error(msg);
+            }
+
             if (data.candidates && data.candidates[0]) {
                 const risposta = data.candidates[0].content.parts[0].text;
                 testoAgente.innerText = risposta;
                 parla(risposta);
             } else {
-                throw new Error("Risposta vuota");
+                throw new Error("Risposta vuota dall'API");
             }
         } catch (err) {
-            gestisciErrore("Non riesco a collegarmi al satellite. Controlla internet.");
+            gestisciErrore(err.message || "errore sconosciuto");
         } finally {
             loader.style.display = "none";
         }
