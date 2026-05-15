@@ -9,10 +9,24 @@
         body { font-family: sans-serif; background: var(--bg); margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         .header { background: var(--verde); color: white; padding: 15px; font-weight: bold; font-size: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
         
-        #display-area { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; overflow-y: auto; }
-        #testo-agente { font-size: 22px; color: var(--verde); font-weight: bold; line-height: 1.4; margin-bottom: 20px; }
-        
-        #anteprima { width: 80%; max-height: 250px; border-radius: 15px; display: none; border: 4px solid white; box-shadow: 0 5px 15px rgba(0,0,0,0.1); margin-bottom: 10px; }
+        #display-area { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 20px; overflow-y: auto; }
+        #testo-agente { font-size: 22px; color: var(--verde); font-weight: bold; line-height: 1.4; margin-bottom: 15px; text-align: center; }
+
+        #anteprima { width: 70%; max-height: 180px; border-radius: 15px; display: none; border: 4px solid white; box-shadow: 0 5px 15px rgba(0,0,0,0.1); margin-bottom: 12px; object-fit: cover; }
+
+        #azione-banner { width: 100%; max-width: 500px; padding: 14px 18px; background: var(--verde); color: white; border-radius: 14px; font-size: 19px; font-weight: bold; text-align: center; margin-bottom: 12px; display: none; line-height: 1.3; }
+        #azione-banner.allerta { background: var(--allerta); }
+        #azione-banner.attenzione { background: #ef6c00; }
+
+        #lista-diagnosi { width: 100%; max-width: 500px; display: none; }
+        .diagnosi-item { display: flex; align-items: center; padding: 12px 14px; background: white; border-radius: 12px; margin-bottom: 7px; box-shadow: 0 2px 5px rgba(0,0,0,0.06); }
+        .diagnosi-pallino { width: 26px; height: 26px; border-radius: 50%; margin-right: 14px; flex-shrink: 0; box-shadow: inset 0 -3px 6px rgba(0,0,0,0.2); }
+        .diagnosi-pallino.rosso { background: #d32f2f; }
+        .diagnosi-pallino.arancione { background: #f57c00; }
+        .diagnosi-pallino.verde { background: #43a047; }
+        .diagnosi-testo { flex: 1; min-width: 0; }
+        .diagnosi-nome { font-size: 17px; font-weight: bold; color: #222; }
+        .diagnosi-nota { font-size: 14px; color: #666; margin-top: 2px; }
         
         .loader { display: none; width: 50px; height: 50px; border: 5px solid #f3f3f3; border-top: 5px solid var(--verde); border-radius: 50%; animation: spin 1s linear infinite; margin: 20px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -51,6 +65,8 @@
         <img id="anteprima" src="">
         <div id="loader" class="loader"></div>
         <div id="testo-agente">"Ciao Elio. Sono pronto. Premi il tasto verde e inquadra la pianta o le olive."</div>
+        <div id="azione-banner"></div>
+        <div id="lista-diagnosi"></div>
     </div>
 
     <div class="footer">
@@ -78,6 +94,24 @@
     const inputKey = document.getElementById('input-key');
     const btnConfermaKey = document.getElementById('btn-conferma-key');
     const erroreKey = document.getElementById('errore-key');
+    const azioneBanner = document.getElementById('azione-banner');
+    const listaDiagnosi = document.getElementById('lista-diagnosi');
+
+    const AVVERSITA = [
+        "Mosca dell'olivo",
+        "Occhio di pavone",
+        "Rogna",
+        "Lebbra (antracnosi)",
+        "Cocciniglia",
+        "Tignola",
+        "Fumaggine",
+        "Verticilliosi",
+        "Xylella",
+        "Margaronia",
+        "Rodilegno",
+        "Carenze nutrizionali",
+        "Stress idrico o danni climatici"
+    ];
 
     // 0. Sblocco con chiave API
     function confermaChiave() {
@@ -112,6 +146,10 @@
         anteprima.src = URL.createObjectURL(file);
         anteprima.style.display = "block";
         loader.style.display = "block";
+        listaDiagnosi.style.display = "none";
+        listaDiagnosi.innerHTML = "";
+        azioneBanner.style.display = "none";
+        testoAgente.style.display = "block";
         testoAgente.innerText = "Sto analizzando l'oliveto...";
         parla("Un momento Elio, sto guardando la pianta.");
 
@@ -127,23 +165,22 @@
 
     // 3. Chiamata a Gemini
     async function chiediAGemini(base64Data) {
-        const prompt = `Parli con Elio, un contadino anziano che ti ascolta a voce con il telefono in oliveto.
-Guarda la foto e rispondi cortissimo, da ascoltare, non da leggere.
+        const prompt = `Sei un agronomo che aiuta Elio, contadino anziano, a capire lo stato di un olivo da una foto.
+Per OGNUNA di queste avversita' valuta dalla foto se e' presente:
+${AVVERSITA.map(a => "- " + a).join("\n")}
 
-DEVI considerare TUTTE le principali avversità dell'olivo, fra cui almeno:
-mosca dell'olivo, occhio di pavone (cicloconio), rogna, lebbra (antracnosi),
-cocciniglia mezzo grano di pepe, tignola, fumaggine, verticilliosi, xylella,
-margaronia, rodilegno, carenze (azoto, potassio, boro, magnesio),
-stress idrico, scottature da sole, danni da gelo, da grandine o da vento.
+Restituisci SOLO un JSON con questa struttura:
+{
+  "diagnosi": [ { "nome": "...", "livello": "rosso|arancione|verde", "nota": "..." }, ... ],
+  "azione": "..."
+}
 
-REGOLE OBBLIGATORIE:
-- Massimo 3 frasi brevi, in totale meno di 60 parole.
-- Italiano semplicissimo, parole di tutti i giorni.
-- Vietati: nomi scientifici, latino, asterischi, elenchi, titoli, parentesi, markdown.
-- Inizia con "Elio,".
-- Dì subito cosa vedi: pianta sana, oppure quale problema (nominalo con il nome comune).
-- Se c'è un problema, aggiungi una sola frase con cosa fare adesso.
-- Se la foto non basta per capire, dillo in una frase e basta.`;
+Regole:
+- L'array "diagnosi" deve contenere tutte le ${AVVERSITA.length} avversita' nello stesso ordine elencato.
+- "livello" e' "rosso" se vedi segni chiari, "arancione" se sospetto, "verde" se non si vede nulla.
+- "nota" e' una frase brevissima in italiano semplice (max 8 parole) o stringa vuota.
+- "azione" e' UNA frase breve (max 15 parole) con cosa fare adesso. Se tutto verde scrivi "Pianta sana, vai avanti cosi'.".
+- Niente latino, niente nomi scientifici, niente markdown, niente parentesi tonde.`;
 
         const payload = {
             contents: [{
@@ -153,8 +190,27 @@ REGOLE OBBLIGATORIE:
                 ]
             }],
             generationConfig: {
-                maxOutputTokens: 200,
-                temperature: 0.3
+                temperature: 0.2,
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: "object",
+                    properties: {
+                        diagnosi: {
+                            type: "array",
+                            items: {
+                                type: "object",
+                                properties: {
+                                    nome: { type: "string" },
+                                    livello: { type: "string", enum: ["rosso", "arancione", "verde"] },
+                                    nota: { type: "string" }
+                                },
+                                required: ["nome", "livello"]
+                            }
+                        },
+                        azione: { type: "string" }
+                    },
+                    required: ["diagnosi", "azione"]
+                }
             }
         };
 
@@ -173,9 +229,11 @@ REGOLE OBBLIGATORIE:
             }
 
             if (data.candidates && data.candidates[0]) {
-                const risposta = pulisciTesto(data.candidates[0].content.parts[0].text);
-                testoAgente.innerText = risposta;
-                parla(risposta);
+                const grezza = data.candidates[0].content.parts[0].text;
+                let parsed;
+                try { parsed = JSON.parse(grezza); }
+                catch (e) { throw new Error("Risposta non in formato atteso"); }
+                mostraDiagnosi(parsed);
             } else {
                 throw new Error("Risposta vuota dall'API");
             }
@@ -214,6 +272,66 @@ REGOLE OBBLIGATORIE:
         });
     }
 
+    // Mostra la diagnosi come lista a pallini colorati + banner azione
+    function mostraDiagnosi(parsed) {
+        const diagnosi = Array.isArray(parsed.diagnosi) ? parsed.diagnosi : [];
+        const azione = pulisciTesto(parsed.azione || "");
+
+        const rossi = diagnosi.filter(d => d.livello === "rosso");
+        const arancioni = diagnosi.filter(d => d.livello === "arancione");
+
+        // Ordino: rossi -> arancioni -> verdi
+        const ordine = { rosso: 0, arancione: 1, verde: 2 };
+        const ordinate = diagnosi.slice().sort((a, b) => (ordine[a.livello] ?? 3) - (ordine[b.livello] ?? 3));
+
+        // Banner azione
+        azioneBanner.classList.remove('allerta', 'attenzione');
+        if (rossi.length) azioneBanner.classList.add('allerta');
+        else if (arancioni.length) azioneBanner.classList.add('attenzione');
+        azioneBanner.innerText = azione || (rossi.length ? "Attenzione, c'e' un problema." : "Pianta sana.");
+        azioneBanner.style.display = "block";
+
+        // Lista
+        listaDiagnosi.innerHTML = "";
+        ordinate.forEach(d => {
+            const item = document.createElement('div');
+            item.className = 'diagnosi-item';
+            const pallino = document.createElement('div');
+            pallino.className = 'diagnosi-pallino ' + (d.livello || 'verde');
+            const testo = document.createElement('div');
+            testo.className = 'diagnosi-testo';
+            const nome = document.createElement('div');
+            nome.className = 'diagnosi-nome';
+            nome.innerText = pulisciTesto(d.nome || "");
+            testo.appendChild(nome);
+            const nota = pulisciTesto(d.nota || "");
+            if (nota) {
+                const notaEl = document.createElement('div');
+                notaEl.className = 'diagnosi-nota';
+                notaEl.innerText = nota;
+                testo.appendChild(notaEl);
+            }
+            item.appendChild(pallino);
+            item.appendChild(testo);
+            listaDiagnosi.appendChild(item);
+        });
+        listaDiagnosi.style.display = "block";
+        testoAgente.style.display = "none";
+
+        // Riassunto vocale corto
+        let riassunto;
+        if (rossi.length) {
+            const nomi = rossi.map(d => d.nome).join(", ");
+            riassunto = `Elio, attenzione: ${nomi}. ${azione}`;
+        } else if (arancioni.length) {
+            const nomi = arancioni.map(d => d.nome).join(", ");
+            riassunto = `Elio, da controllare: ${nomi}. ${azione}`;
+        } else {
+            riassunto = `Elio, la pianta sembra sana. ${azione}`;
+        }
+        parla(pulisciTesto(riassunto));
+    }
+
     // Rimuove markdown e parentetiche scientifiche prima di mostrare/pronunciare
     function pulisciTesto(t) {
         return t
@@ -235,6 +353,9 @@ REGOLE OBBLIGATORIE:
     }
 
     function gestisciErrore(txt) {
+        listaDiagnosi.style.display = "none";
+        azioneBanner.style.display = "none";
+        testoAgente.style.display = "block";
         testoAgente.innerText = "Elio, scusa: " + txt;
         parla(testoAgente.innerText);
         loader.style.display = "none";
