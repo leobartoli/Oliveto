@@ -198,17 +198,26 @@
         }
         #thumbnails:empty { display: none; }
         .thumb {
-            width: 58px; height: 58px; border-radius: 10px;
+            width: 64px; height: 64px; border-radius: 11px;
             background-size: cover; background-position: center;
             border: 2px solid white; box-shadow: var(--ombra-card);
             flex-shrink: 0; position: relative;
             animation: scaleIn 0.25s ease;
+            cursor: pointer; transition: transform 0.1s;
         }
+        .thumb:active { transform: scale(0.92); }
         .thumb-num {
             position: absolute; bottom: 2px; right: 2px;
             background: rgba(0,0,0,0.65); color: white;
-            font-size: 10px; font-weight: 700;
-            border-radius: 4px; padding: 1px 4px; line-height: 1.2;
+            font-size: 11px; font-weight: 700;
+            border-radius: 4px; padding: 1px 5px; line-height: 1.2;
+        }
+
+        .disclaimer {
+            font-size: clamp(11px, 2.9vw, 12.5px);
+            color: var(--testo-soft); text-align: center;
+            margin-top: 12px; padding: 0 4px;
+            line-height: 1.4; font-style: italic;
         }
 
         .modal-overlay {
@@ -259,7 +268,7 @@
     <div id="modal-key" class="modal-overlay">
         <div class="modal-box">
             <h2>🔑 Chiave API</h2>
-            <p>Incolla la chiave Gemini per questa sessione.<br>Non verrà salvata: alla prossima apertura va reinserita.</p>
+            <p>Incolla la chiave Gemini per usare l'app.<br>Resta attiva finché tieni aperta questa scheda; quando la chiudi sparisce.</p>
             <input type="password" id="input-key" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="AIza...">
             <button id="btn-conferma-key">Avvia agente</button>
             <div id="errore-key"></div>
@@ -300,6 +309,7 @@
         <button class="btn-foto" id="btn-attiva">📸 SCATTA — Foto 1/10</button>
         <button class="btn-galleria" id="btn-galleria">🖼️ Aggiungi dal dispositivo</button>
         <button class="btn-analizza" id="btn-analizza" disabled>✅ Analizza il giro (servono almeno 10 foto)</button>
+        <div class="disclaimer">💡 Suggerimento dell'app. Per decisioni importanti senti il tuo agronomo.</div>
     </div>
 
 <script>
@@ -308,6 +318,9 @@
     // Niente localStorage / cookie: ricaricando la pagina va reinserita.
     let API_KEY = null;
     const URL_BASE = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent";
+    const STORAGE_KEY = "elio_oliveto_apikey"; // sessionStorage: vive solo finche' la scheda e' aperta
+    function leggiChiaveSalvata() { try { return sessionStorage.getItem(STORAGE_KEY); } catch (e) { return null; } }
+    function salvaChiave(k) { try { sessionStorage.setItem(STORAGE_KEY, k); } catch (e) { /* private mode */ } }
 
     const btnAttiva = document.getElementById('btn-attiva');
     const inputFile = document.getElementById('input-file');
@@ -359,6 +372,7 @@
             return;
         }
         API_KEY = val;
+        salvaChiave(val);
         inputKey.value = "";
         modalKey.classList.add('nascosto');
         avviaResocontoIniziale();
@@ -420,6 +434,10 @@
     inputFileGalleria.addEventListener('change', gestisciFoto);
 
     btnRicomincia.addEventListener('click', () => {
+        if (giroFoto.length > 0 &&
+            !confirm(`Vuoi cancellare le ${giroFoto.length} foto e ripartire dall'inizio?`)) {
+            return;
+        }
         giroFoto = [];
         aggiornaGiroUI();
         listaDiagnosi.style.display = "none";
@@ -440,10 +458,17 @@
             const div = document.createElement('div');
             div.className = 'thumb';
             div.style.backgroundImage = `url("data:image/jpeg;base64,${f.base64}")`;
+            div.title = "Tocca per eliminare questa foto";
             const num = document.createElement('span');
             num.className = 'thumb-num';
             num.innerText = (i + 1);
             div.appendChild(num);
+            div.addEventListener('click', () => {
+                if (confirm(`Eliminare la foto numero ${i + 1}?`)) {
+                    giroFoto.splice(i, 1);
+                    aggiornaGiroUI();
+                }
+            });
             thumbnailsBox.appendChild(div);
         });
 
@@ -993,6 +1018,15 @@ Regole:
 
     // Inizializza UI del giro
     aggiornaGiroUI();
+
+    // Se la chiave e' gia' salvata in sessione (scheda riaperta) la usiamo
+    // senza chiedere di nuovo. Niente localStorage: sparisce alla chiusura del tab.
+    const chiaveSalvata = leggiChiaveSalvata();
+    if (chiaveSalvata) {
+        API_KEY = chiaveSalvata;
+        modalKey.classList.add('nascosto');
+        avviaResocontoIniziale();
+    }
 </script>
 </body>
 </html>
